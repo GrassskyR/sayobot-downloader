@@ -70,7 +70,7 @@ jobs:
             -PversionName="$VERSION_NAME" \
             -PversionCode="$VERSION_CODE" \
             :app:lintRelease \
-            :app:testReleaseUnitTest \
+            :app:testDebugUnitTest \
             :app:assembleRelease
 
       - name: Rename release APK
