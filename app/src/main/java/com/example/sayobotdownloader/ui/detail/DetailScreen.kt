@@ -32,7 +32,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import android.app.Application
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -70,6 +72,18 @@ fun DetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     val downloadState by viewModel.downloadState.collectAsState()
     val showDownloadDialog by viewModel.showDownloadDialog.collectAsState()
+    val leaveDetail = {
+        viewModel.stopPreview()
+        onBack()
+    }
+
+    BackHandler(onBack = leaveDetail)
+
+    DisposableEffect(viewModel) {
+        onDispose {
+            viewModel.stopPreview()
+        }
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         TopAppBar(
@@ -83,7 +97,7 @@ fun DetailScreen(
                 )
             },
             navigationIcon = {
-                IconButton(onClick = onBack) {
+                IconButton(onClick = leaveDetail) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                 }
             },

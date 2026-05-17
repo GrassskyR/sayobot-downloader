@@ -66,6 +66,10 @@ class DetailViewModel(
 
     fun seekTo(positionMs: Int) = audioPlayer.seekTo(positionMs)
 
+    fun stopPreview() {
+        audioPlayer.release()
+    }
+
     fun showDownloadDialog() { _showDownloadDialog.value = true }
     fun dismissDownloadDialog() { _showDownloadDialog.value = false }
 

@@ -12,8 +12,10 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.example.sayobotdownloader.MainActivity
 import com.example.sayobotdownloader.R
+import java.io.File
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
@@ -26,7 +28,8 @@ class DownloadNotificationHelper(context: Context) {
             fileName = fileName,
             state = State.RUNNING,
             bytesDownloaded = 0L,
-            totalBytes = 0L
+            totalBytes = 0L,
+            file = null
         )
         tasks[downloadId] = task
         publish(downloadId, task)
@@ -37,18 +40,20 @@ class DownloadNotificationHelper(context: Context) {
             fileName = fileName,
             state = State.RUNNING,
             bytesDownloaded = bytesDownloaded,
-            totalBytes = totalBytes
+            totalBytes = totalBytes,
+            file = null
         )
         tasks[downloadId] = task
         publish(downloadId, task)
     }
 
-    fun notifyCompleted(downloadId: Long, fileName: String, bytesDownloaded: Long, totalBytes: Long) {
+    fun notifyCompleted(downloadId: Long, fileName: String, bytesDownloaded: Long, totalBytes: Long, file: File) {
         val task = TaskStatus(
             fileName = fileName,
             state = State.COMPLETED,
             bytesDownloaded = bytesDownloaded,
-            totalBytes = totalBytes.takeIf { it > 0 } ?: bytesDownloaded
+            totalBytes = totalBytes.takeIf { it > 0 } ?: bytesDownloaded,
+            file = file
         )
         tasks[downloadId] = task
         publish(downloadId, task)
@@ -59,7 +64,8 @@ class DownloadNotificationHelper(context: Context) {
             fileName = fileName,
             state = State.FAILED,
             bytesDownloaded = bytesDownloaded,
-            totalBytes = totalBytes
+            totalBytes = totalBytes,
+            file = null
         )
         tasks[downloadId] = task
         publish(downloadId, task)
@@ -81,11 +87,11 @@ class DownloadNotificationHelper(context: Context) {
             .setSmallIcon(R.drawable.ic_stat_download)
             .setContentTitle(task.fileName)
             .setContentText(task.contentText())
-            .setContentIntent(contentIntent())
+            .setContentIntent(taskContentIntent(task))
             .setGroup(GROUP_KEY_DOWNLOADS)
             .setOnlyAlertOnce(true)
-            .setOngoing(task.state == State.RUNNING)
-            .setAutoCancel(task.state != State.RUNNING)
+            .setOngoing(false)
+            .setAutoCancel(false)
             .setLocalOnly(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .apply {
@@ -125,12 +131,12 @@ class DownloadNotificationHelper(context: Context) {
             .setSmallIcon(R.drawable.ic_stat_download)
             .setContentTitle(title)
             .setContentText(if (running > 0) "\u4E0B\u8F7D\u4E2D\u5FC3" else "\u70B9\u51FB\u6253\u5F00\u5E94\u7528")
-            .setContentIntent(contentIntent())
+            .setContentIntent(openAppIntent(0))
             .setGroup(GROUP_KEY_DOWNLOADS)
             .setGroupSummary(true)
             .setOnlyAlertOnce(true)
-            .setOngoing(running > 0)
-            .setAutoCancel(running == 0)
+            .setOngoing(false)
+            .setAutoCancel(false)
             .setLocalOnly(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setStyle(style)
@@ -146,19 +152,41 @@ class DownloadNotificationHelper(context: Context) {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    private fun contentIntent(): PendingIntent {
+    private fun taskContentIntent(task: TaskStatus): PendingIntent {
+        if (task.state != State.COMPLETED || task.file?.exists() != true) {
+            return openAppIntent(task.fileName.hashCode())
+        }
+
+        val uri = FileProvider.getUriForFile(
+            appContext,
+            "${appContext.packageName}.fileprovider",
+            task.file
+        )
+        val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, OSZ_MIME_TYPE)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val chooser = Intent.createChooser(viewIntent, "\u6253\u5F00\u8C31\u9762\u6587\u4EF6").apply {
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        return PendingIntent.getActivity(appContext, task.file.absolutePath.hashCode(), chooser, flags)
+    }
+
+    private fun openAppIntent(requestCode: Int): PendingIntent {
         val intent = Intent(appContext, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        return PendingIntent.getActivity(appContext, 0, intent, flags)
+        return PendingIntent.getActivity(appContext, requestCode, intent, flags)
     }
 
     private data class TaskStatus(
         val fileName: String,
         val state: State,
         val bytesDownloaded: Long,
-        val totalBytes: Long
+        val totalBytes: Long,
+        val file: File?
     ) {
         fun percent(): Int = if (totalBytes > 0L) {
             ((bytesDownloaded * 100L) / totalBytes).coerceIn(0L, 100L).toInt()
@@ -200,6 +228,7 @@ class DownloadNotificationHelper(context: Context) {
         private const val SUMMARY_ID = 9001
         private const val CHILD_ID_BASE = 10_000
         private const val MAX_SUMMARY_LINES = 7
+        private const val OSZ_MIME_TYPE = "application/octet-stream"
 
         private val tasks = ConcurrentHashMap<Long, TaskStatus>()
 

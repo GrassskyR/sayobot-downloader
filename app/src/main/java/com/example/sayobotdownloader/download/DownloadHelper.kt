@@ -93,7 +93,7 @@ class DownloadHelper(private val context: Context) {
                     }
                     MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), null, null)
                     progress.value = DownloadState(DownloadState.STATUS_SUCCESSFUL, downloaded, totalBytes, safeName)
-                    notificationHelper.notifyCompleted(downloadId, safeName, downloaded, totalBytes)
+                    notificationHelper.notifyCompleted(downloadId, safeName, downloaded, totalBytes, file)
                 }
             } catch (e: Exception) {
                 progress.value = DownloadState(DownloadState.STATUS_FAILED, downloaded, totalBytes, safeName)
