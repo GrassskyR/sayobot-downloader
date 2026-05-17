@@ -3,9 +3,16 @@ package com.example.sayobotdownloader.data
 import com.example.sayobotdownloader.model.*
 import com.example.sayobotdownloader.network.SayobotApi
 
-class BeatmapRepository(private val api: SayobotApi = SayobotApi()) {
+interface BeatmapRepositoryContract {
+    suspend fun search(keyword: String, limit: Int = 25, offset: Int = 0): BeatmapListResponse
+    suspend fun getNew(limit: Int = 25, offset: Int = 0): BeatmapListResponse
+    suspend fun getHot(limit: Int = 25, offset: Int = 0): BeatmapListResponse
+    suspend fun getDetail(sid: Int): BeatmapDetailResponse
+}
 
-    suspend fun search(keyword: String, limit: Int = 25, offset: Int = 0): BeatmapListResponse {
+class BeatmapRepository(private val api: SayobotApi = SayobotApi()) : BeatmapRepositoryContract {
+
+    override suspend fun search(keyword: String, limit: Int, offset: Int): BeatmapListResponse {
         val sid = keyword.trim().toIntOrNull()
         if (sid != null) {
             val detail = api.getBeatmapDetail(sid)
@@ -18,9 +25,9 @@ class BeatmapRepository(private val api: SayobotApi = SayobotApi()) {
         return api.searchBeatmaps(keyword, limit, offset)
     }
 
-    suspend fun getNew(limit: Int = 25, offset: Int = 0) = api.getNewBeatmaps(limit, offset)
-    suspend fun getHot(limit: Int = 25, offset: Int = 0) = api.getHotBeatmaps(limit, offset)
-    suspend fun getDetail(sid: Int) = api.getBeatmapDetail(sid)
+    override suspend fun getNew(limit: Int, offset: Int) = api.getNewBeatmaps(limit, offset)
+    override suspend fun getHot(limit: Int, offset: Int) = api.getHotBeatmaps(limit, offset)
+    override suspend fun getDetail(sid: Int) = api.getBeatmapDetail(sid)
 
     private fun detailToListItem(d: BeatmapDetail) = BeatmapListItem(
         sid = d.sid, title = d.title, titleU = d.titleU,

@@ -3,6 +3,7 @@ package com.example.sayobotdownloader.ui.search
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.sayobotdownloader.data.BeatmapRepository
+import com.example.sayobotdownloader.data.BeatmapRepositoryContract
 import com.example.sayobotdownloader.model.BeatmapListItem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,7 +24,7 @@ sealed interface SearchUiState {
 }
 
 class SearchViewModel(
-    private val repository: BeatmapRepository = BeatmapRepository()
+    private val repository: BeatmapRepositoryContract = BeatmapRepository()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)

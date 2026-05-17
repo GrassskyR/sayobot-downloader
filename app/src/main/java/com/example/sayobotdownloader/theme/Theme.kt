@@ -1,6 +1,8 @@
 package com.example.sayobotdownloader.theme
 
+import android.annotation.SuppressLint
 import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -30,7 +32,7 @@ fun SayobotDownloaderTheme(
     when {
       dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
         val context = LocalContext.current
-        if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        dynamicColorScheme(darkTheme, context)
       }
       darkTheme -> DarkColorScheme
       else -> LightColorScheme
@@ -38,3 +40,9 @@ fun SayobotDownloaderTheme(
 
   MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
 }
+
+@RequiresApi(Build.VERSION_CODES.S)
+@SuppressLint("NewApi")
+@Composable
+private fun dynamicColorScheme(darkTheme: Boolean, context: android.content.Context) =
+  if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
