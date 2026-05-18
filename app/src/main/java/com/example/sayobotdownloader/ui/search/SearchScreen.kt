@@ -90,13 +90,19 @@ fun SearchScreen(
         }
     }
 
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.layoutInfo }
-            .collect { layoutInfo ->
-                if (viewModel.searchInteractionState.value == SearchInteractionState.INPUT) return@collect
-                val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                val totalItems = layoutInfo.totalItemsCount
-                if (lastVisible >= totalItems - 3) {
+    LaunchedEffect(listState, uiState, searchInteractionState) {
+        val state = uiState as? SearchUiState.Success ?: return@LaunchedEffect
+        if (!state.canLoadMore || state.isLoadingMore || searchInteractionState == SearchInteractionState.INPUT) {
+            return@LaunchedEffect
+        }
+        snapshotFlow {
+            val layoutInfo = listState.layoutInfo
+            val totalItems = layoutInfo.totalItemsCount
+            val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            totalItems > 0 && lastVisible >= totalItems - LOAD_MORE_THRESHOLD
+        }
+            .collect { shouldLoadMore ->
+                if (shouldLoadMore) {
                     viewModel.loadMore()
                 }
             }
@@ -406,3 +412,5 @@ private fun formatCount(count: Int): String {
         else -> count.toString()
     }
 }
+
+private const val LOAD_MORE_THRESHOLD = 5

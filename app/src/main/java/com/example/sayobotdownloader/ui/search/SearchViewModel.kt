@@ -43,10 +43,11 @@ class SearchViewModel(
     private val _searchInteractionState = MutableStateFlow(SearchInteractionState.BROWSING)
     val searchInteractionState: StateFlow<SearchInteractionState> = _searchInteractionState.asStateFlow()
 
-    private var currentEndId = 0
+    private var nextOffset = 0
     private var lastBrowsingMode = SearchMode.HOT
     private var loadJob: Job? = null
     private val allItems = mutableListOf<BeatmapListItem>()
+    private val loadedSids = mutableSetOf<Int>()
 
     init {
         loadHot()
@@ -73,19 +74,18 @@ class SearchViewModel(
         }
         _searchMode.value = SearchMode.SEARCH
         _searchInteractionState.value = SearchInteractionState.LOADING
-        allItems.clear()
-        currentEndId = 0
+        resetPaging()
         _uiState.value = SearchUiState.Loading
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             try {
-                val response = repository.search(query, offset = 0)
+                val response = repository.search(query, limit = PAGE_SIZE, offset = 0)
                 if (response.status == 0 && response.data != null) {
-                    allItems.addAll(response.data)
-                    currentEndId = response.endid
+                    val addedCount = appendNewItems(response.data)
+                    nextOffset += response.data.size
                     _uiState.value = SearchUiState.Success(
                         items = allItems.toList(),
-                        canLoadMore = response.data.size >= 25
+                        canLoadMore = response.data.size >= PAGE_SIZE && addedCount > 0
                     )
                     _searchInteractionState.value = SearchInteractionState.RESULTS
                 } else {
@@ -106,19 +106,18 @@ class SearchViewModel(
         lastBrowsingMode = SearchMode.HOT
         _searchInteractionState.value = SearchInteractionState.BROWSING
         _searchQuery.value = ""
-        allItems.clear()
-        currentEndId = 0
+        resetPaging()
         _uiState.value = SearchUiState.Loading
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             try {
-                val response = repository.getHot(offset = 0)
+                val response = repository.getHot(limit = PAGE_SIZE, offset = 0)
                 if (response.status == 0 && response.data != null) {
-                    allItems.addAll(response.data)
-                    currentEndId = response.endid
+                    val addedCount = appendNewItems(response.data)
+                    nextOffset += response.data.size
                     _uiState.value = SearchUiState.Success(
                         items = allItems.toList(),
-                        canLoadMore = response.data.size >= 25
+                        canLoadMore = response.data.size >= PAGE_SIZE && addedCount > 0
                     )
                 } else {
                     _uiState.value = SearchUiState.Error("Failed to load")
@@ -136,19 +135,18 @@ class SearchViewModel(
         lastBrowsingMode = SearchMode.NEW
         _searchInteractionState.value = SearchInteractionState.BROWSING
         _searchQuery.value = ""
-        allItems.clear()
-        currentEndId = 0
+        resetPaging()
         _uiState.value = SearchUiState.Loading
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             try {
-                val response = repository.getNew(offset = 0)
+                val response = repository.getNew(limit = PAGE_SIZE, offset = 0)
                 if (response.status == 0 && response.data != null) {
-                    allItems.addAll(response.data)
-                    currentEndId = response.endid
+                    val addedCount = appendNewItems(response.data)
+                    nextOffset += response.data.size
                     _uiState.value = SearchUiState.Success(
                         items = allItems.toList(),
-                        canLoadMore = response.data.size >= 25
+                        canLoadMore = response.data.size >= PAGE_SIZE && addedCount > 0
                     )
                 } else {
                     _uiState.value = SearchUiState.Error("Failed to load")
@@ -172,17 +170,17 @@ class SearchViewModel(
                 val response = when (_searchMode.value) {
                     SearchMode.SEARCH -> {
                         if (query.isEmpty()) return@launch
-                        repository.search(query, offset = currentEndId)
+                        repository.search(query, limit = PAGE_SIZE, offset = nextOffset)
                     }
-                    SearchMode.HOT -> repository.getHot(offset = currentEndId)
-                    SearchMode.NEW -> repository.getNew(offset = currentEndId)
+                    SearchMode.HOT -> repository.getHot(limit = PAGE_SIZE, offset = nextOffset)
+                    SearchMode.NEW -> repository.getNew(limit = PAGE_SIZE, offset = nextOffset)
                 }
                 if (response.status == 0 && response.data != null) {
-                    allItems.addAll(response.data)
-                    currentEndId = response.endid
+                    val addedCount = appendNewItems(response.data)
+                    nextOffset += response.data.size
                     _uiState.value = SearchUiState.Success(
                         items = allItems.toList(),
-                        canLoadMore = response.data.size >= 25
+                        canLoadMore = response.data.size >= PAGE_SIZE && addedCount > 0
                     )
                 } else {
                     _uiState.value = SearchUiState.Success(
@@ -207,5 +205,26 @@ class SearchViewModel(
             SearchMode.NEW -> loadNew()
             SearchMode.HOT, SearchMode.SEARCH -> loadHot()
         }
+    }
+
+    private fun resetPaging() {
+        allItems.clear()
+        loadedSids.clear()
+        nextOffset = 0
+    }
+
+    private fun appendNewItems(items: List<BeatmapListItem>): Int {
+        var addedCount = 0
+        items.forEach { item ->
+            if (loadedSids.add(item.sid)) {
+                allItems.add(item)
+                addedCount++
+            }
+        }
+        return addedCount
+    }
+
+    private companion object {
+        const val PAGE_SIZE = 25
     }
 }

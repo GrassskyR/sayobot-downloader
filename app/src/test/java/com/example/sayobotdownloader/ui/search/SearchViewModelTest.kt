@@ -112,7 +112,7 @@ class SearchViewModelTest {
         val repository = FakeBeatmapRepository(
             hotResponses = listOf(
                 successResponse("First Page", endId = 25, itemCount = 25),
-                successResponse("Second Page", endId = 50)
+                successResponse("Second Page", endId = 50, firstSid = 10_000)
             )
         )
         val viewModel = SearchViewModel(repository)
@@ -123,6 +123,36 @@ class SearchViewModelTest {
         assertEquals(26, success.items.size)
         assertEquals("First Page", success.items.first().title)
         assertEquals("Second Page", success.items.last().title)
+    }
+
+    @Test
+    fun loadMore_usesOffsetPaginationForHotBeatmaps() = runTest {
+        val repository = FakeBeatmapRepository(
+            hotResponses = listOf(
+                successResponse("First Page", itemCount = 25),
+                successResponse("Second Page", firstSid = 10_000)
+            )
+        )
+        val viewModel = SearchViewModel(repository)
+
+        viewModel.loadMore()
+
+        assertEquals(listOf(0, 25), repository.hotOffsets)
+    }
+
+    @Test
+    fun loadMore_whenApiLoopsBackToFirstPage_stopsPaginationWithoutDuplicates() = runTest {
+        val firstPage = successResponse("First Page", itemCount = 25)
+        val repository = FakeBeatmapRepository(
+            hotResponses = listOf(firstPage, firstPage)
+        )
+        val viewModel = SearchViewModel(repository)
+
+        viewModel.loadMore()
+
+        val success = viewModel.uiState.value as SearchUiState.Success
+        assertEquals(25, success.items.size)
+        assertEquals(false, success.canLoadMore)
     }
 
     private fun assertSuccessTitles(state: SearchUiState, vararg titles: String) {
@@ -141,6 +171,7 @@ private class FakeBeatmapRepository(
     private var newCallCount = 0
     var searchCallCount = 0
         private set
+    val hotOffsets = mutableListOf<Int>()
 
     override suspend fun search(keyword: String, limit: Int, offset: Int): BeatmapListResponse =
         searchResponses.getOrElse(searchCallCount++) { searchResponses.last() }
@@ -149,6 +180,7 @@ private class FakeBeatmapRepository(
         newResponses.getOrElse(newCallCount++) { newResponses.last() }
 
     override suspend fun getHot(limit: Int, offset: Int): BeatmapListResponse {
+        hotOffsets.add(offset)
         if (failHot) error("Network error")
         return hotResponses.getOrElse(hotCallCount++) { hotResponses.last() }
     }
@@ -157,12 +189,17 @@ private class FakeBeatmapRepository(
         BeatmapDetailResponse(status = 1)
 }
 
-private fun successResponse(title: String, endId: Int = 0, itemCount: Int = 1) = BeatmapListResponse(
+private fun successResponse(
+    title: String,
+    endId: Int = 0,
+    itemCount: Int = 1,
+    firstSid: Int = title.hashCode()
+) = BeatmapListResponse(
     status = 0,
     endid = endId,
     data = List(itemCount) { index ->
         BeatmapListItem(
-            sid = title.hashCode() + index,
+            sid = firstSid + index,
             title = if (index == 0) title else "$title $index",
             artist = "Artist",
             creator = "Creator"

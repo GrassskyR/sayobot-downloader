@@ -3,8 +3,9 @@ package com.example.sayobotdownloader.network
 import com.example.sayobotdownloader.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -16,13 +17,12 @@ class SayobotApi(
 ) {
     suspend fun searchBeatmaps(keyword: String, limit: Int = 25, offset: Int = 0): BeatmapListResponse =
         withContext(Dispatchers.IO) {
-            val body = json.encodeToString(mapOf(
-                "cmd" to "beatmaplist",
-                "limit" to limit.toString(),
-                "offset" to offset.toString(),
-                "type" to "search",
-                "keyword" to keyword
-            ))
+            val body = beatmapListBody(
+                type = "search",
+                limit = limit,
+                offset = offset,
+                keyword = keyword
+            )
             val request = Request.Builder()
                 .url("https://api.sayobot.cn/?post")
                 .post(body.toRequestBody("text/plain".toMediaType()))
@@ -32,12 +32,7 @@ class SayobotApi(
 
     suspend fun getNewBeatmaps(limit: Int = 25, offset: Int = 0): BeatmapListResponse =
         withContext(Dispatchers.IO) {
-            val body = json.encodeToString(mapOf(
-                "cmd" to "beatmaplist",
-                "limit" to limit.toString(),
-                "offset" to offset.toString(),
-                "type" to "new"
-            ))
+            val body = beatmapListBody(type = "new", limit = limit, offset = offset)
             val request = Request.Builder()
                 .url("https://api.sayobot.cn/?post")
                 .post(body.toRequestBody("text/plain".toMediaType()))
@@ -47,12 +42,7 @@ class SayobotApi(
 
     suspend fun getHotBeatmaps(limit: Int = 25, offset: Int = 0): BeatmapListResponse =
         withContext(Dispatchers.IO) {
-            val body = json.encodeToString(mapOf(
-                "cmd" to "beatmaplist",
-                "limit" to limit.toString(),
-                "offset" to offset.toString(),
-                "type" to "hot"
-            ))
+            val body = beatmapListBody(type = "hot", limit = limit, offset = offset)
             val request = Request.Builder()
                 .url("https://api.sayobot.cn/?post")
                 .post(body.toRequestBody("text/plain".toMediaType()))
@@ -67,6 +57,21 @@ class SayobotApi(
                 .build()
             parseResponse(client.newCall(request).execute())
         }
+
+    private fun beatmapListBody(
+        type: String,
+        limit: Int,
+        offset: Int,
+        keyword: String? = null
+    ): String = buildJsonObject {
+        put("cmd", "beatmaplist")
+        put("limit", limit)
+        put("offset", offset)
+        put("type", type)
+        if (keyword != null) {
+            put("keyword", keyword)
+        }
+    }.toString()
 
     private inline fun <reified T> parseResponse(response: okhttp3.Response): T {
         response.use {
