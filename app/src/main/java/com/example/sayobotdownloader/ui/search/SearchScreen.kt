@@ -1,6 +1,10 @@
 package com.example.sayobotdownloader.ui.search
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
@@ -28,6 +33,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,8 +51,12 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -66,8 +76,14 @@ fun SearchScreen(
     val uiState by viewModel.uiState.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchMode by viewModel.searchMode.collectAsState()
+    val searchInteractionState by viewModel.searchInteractionState.collectAsState()
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    val isSearchActive = searchInteractionState != SearchInteractionState.BROWSING
+    val showBrowsingTabs = searchInteractionState == SearchInteractionState.BROWSING ||
+        searchInteractionState == SearchInteractionState.INPUT
     val showScrollToTop by remember {
         derivedStateOf {
             listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 300
@@ -77,6 +93,7 @@ fun SearchScreen(
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo }
             .collect { layoutInfo ->
+                if (viewModel.searchInteractionState.value == SearchInteractionState.INPUT) return@collect
                 val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
                 val totalItems = layoutInfo.totalItemsCount
                 if (lastVisible >= totalItems - 3) {
@@ -84,6 +101,21 @@ fun SearchScreen(
                 }
             }
     }
+
+    fun submitSearch() {
+        if (searchQuery.isBlank()) return
+        focusManager.clearFocus()
+        keyboardController?.hide()
+        viewModel.onSearch()
+    }
+
+    fun exitSearch() {
+        focusManager.clearFocus()
+        keyboardController?.hide()
+        viewModel.exitSearchMode()
+    }
+
+    BackHandler(enabled = isSearchActive, onBack = ::exitSearch)
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -100,100 +132,161 @@ fun SearchScreen(
                 onValueChange = viewModel::onSearchQueryChange,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .onFocusChanged { focusState ->
+                        if (focusState.isFocused) {
+                            viewModel.enterSearchMode()
+                        }
+                    },
                 placeholder = { Text("Search beatmaps...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true
+                leadingIcon = {
+                    IconButton(
+                        onClick = ::submitSearch,
+                        enabled = searchQuery.isNotBlank()
+                    ) {
+                        Icon(Icons.Default.Search, contentDescription = "Search")
+                    }
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = ::exitSearch) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear search")
+                        }
+                    }
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { submitSearch() })
             )
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = searchMode == SearchMode.NEW,
-                    onClick = { viewModel.loadNew() },
-                    label = { Text("Latest") }
-                )
-                FilterChip(
-                    selected = searchMode == SearchMode.HOT,
-                    onClick = { viewModel.loadHot() },
-                    label = { Text("Hot") }
-                )
-                FilterChip(
-                    selected = searchMode == SearchMode.SEARCH,
-                    onClick = { viewModel.onSearch() },
-                    label = { Text("Search") }
-                )
+            if (showBrowsingTabs) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = searchMode == SearchMode.NEW,
+                        onClick = {
+                            focusManager.clearFocus()
+                            keyboardController?.hide()
+                            viewModel.loadNew()
+                        },
+                        label = { Text("Latest") }
+                    )
+                    FilterChip(
+                        selected = searchMode == SearchMode.HOT,
+                        onClick = {
+                            focusManager.clearFocus()
+                            keyboardController?.hide()
+                            viewModel.loadHot()
+                        },
+                        label = { Text("Hot") }
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            when (val state = uiState) {
-                is SearchUiState.Idle, is SearchUiState.Loading -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator()
-                    }
-                }
-                is SearchUiState.Error -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(state.message, color = MaterialTheme.colorScheme.error)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            TextButton(onClick = { viewModel.loadHot() }) {
-                                Text("Retry")
-                            }
-                        }
-                    }
-                }
-                is SearchUiState.Success -> {
-                    if (state.items.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                when (val state = uiState) {
+                    is SearchUiState.Idle, is SearchUiState.Loading -> {
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("No results")
+                            CircularProgressIndicator()
                         }
-                    } else {
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier.fillMaxSize()
+                    }
+                    is SearchUiState.Error -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
                         ) {
-                            items(state.items, key = { it.sid }) { item ->
-                                BeatmapCard(
-                                    item = item,
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(state.message, color = MaterialTheme.colorScheme.error)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                TextButton(
                                     onClick = {
-                                        onItemClick(DetailRoute(sid = item.sid, title = item.title))
+                                        when (searchMode) {
+                                            SearchMode.SEARCH -> submitSearch()
+                                            SearchMode.NEW -> viewModel.loadNew()
+                                            SearchMode.HOT -> viewModel.loadHot()
+                                        }
                                     }
+                                ) {
+                                    Text("Retry")
+                                }
+                            }
+                        }
+                    }
+                    is SearchUiState.Success -> {
+                        if (state.items.isEmpty()) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (searchMode == SearchMode.SEARCH) {
+                                        "No beatmaps found. Try another keyword."
+                                    } else {
+                                        "No beatmaps"
+                                    },
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            if (state.isLoadingMore) {
-                                item {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(16.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        } else {
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                items(state.items, key = { it.sid }) { item ->
+                                    BeatmapCard(
+                                        item = item,
+                                        onClick = {
+                                            onItemClick(DetailRoute(sid = item.sid, title = item.title))
+                                        }
+                                    )
+                                }
+                                if (state.isLoadingMore) {
+                                    item {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(16.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
+
+                if (searchInteractionState == SearchInteractionState.INPUT) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.86f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (searchQuery.isBlank()) {
+                                "Enter a keyword to search beatmaps"
+                            } else {
+                                "Press the keyboard search key or search icon"
+                            },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
 
-        if (showScrollToTop) {
+        if (showScrollToTop && searchInteractionState != SearchInteractionState.INPUT) {
             FloatingActionButton(
                 onClick = { coroutineScope.launch { listState.animateScrollToItem(0) } },
                 modifier = Modifier

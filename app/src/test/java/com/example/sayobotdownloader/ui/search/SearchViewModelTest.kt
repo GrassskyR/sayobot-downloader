@@ -49,7 +49,62 @@ class SearchViewModelTest {
         viewModel.onSearch()
 
         assertEquals(SearchMode.SEARCH, viewModel.searchMode.value)
+        assertEquals(SearchInteractionState.RESULTS, viewModel.searchInteractionState.value)
         assertSuccessTitles(viewModel.uiState.value, "Search Result")
+    }
+
+    @Test
+    fun onSearchQueryChange_entersInputModeWithoutSearching() = runTest {
+        val repository = FakeBeatmapRepository(
+            hotResponses = listOf(successResponse("Initial")),
+            searchResponses = listOf(successResponse("Search Result"))
+        )
+        val viewModel = SearchViewModel(repository)
+
+        viewModel.onSearchQueryChange("quaver")
+
+        assertEquals(SearchInteractionState.INPUT, viewModel.searchInteractionState.value)
+        assertEquals(0, repository.searchCallCount)
+        assertSuccessTitles(viewModel.uiState.value, "Initial")
+    }
+
+    @Test
+    fun exitSearchMode_returnsToPreviousBrowsingModeAndClearsQuery() = runTest {
+        val repository = FakeBeatmapRepository(
+            hotResponses = listOf(successResponse("Hot Beatmap")),
+            newResponses = listOf(successResponse("New Beatmap"), successResponse("New Reloaded")),
+            searchResponses = listOf(successResponse("Search Result"))
+        )
+        val viewModel = SearchViewModel(repository)
+
+        viewModel.loadNew()
+        viewModel.onSearchQueryChange("quaver")
+        viewModel.onSearch()
+        viewModel.exitSearchMode()
+
+        assertEquals(SearchMode.NEW, viewModel.searchMode.value)
+        assertEquals(SearchInteractionState.BROWSING, viewModel.searchInteractionState.value)
+        assertEquals("", viewModel.searchQuery.value)
+        assertSuccessTitles(viewModel.uiState.value, "New Reloaded")
+    }
+
+    @Test
+    fun retrySearchAfterError_keepsQuery() = runTest {
+        val repository = FakeBeatmapRepository(
+            hotResponses = listOf(successResponse("Initial")),
+            searchResponses = listOf(
+                BeatmapListResponse(status = 1),
+                successResponse("Recovered Result")
+            )
+        )
+        val viewModel = SearchViewModel(repository)
+
+        viewModel.onSearchQueryChange("quaver")
+        viewModel.onSearch()
+        viewModel.onSearch()
+
+        assertEquals("quaver", viewModel.searchQuery.value)
+        assertSuccessTitles(viewModel.uiState.value, "Recovered Result")
     }
 
     @Test
@@ -78,17 +133,20 @@ class SearchViewModelTest {
 
 private class FakeBeatmapRepository(
     private val hotResponses: List<BeatmapListResponse> = listOf(successResponse("Hot Beatmap")),
+    private val newResponses: List<BeatmapListResponse> = listOf(successResponse("New Beatmap")),
     private val searchResponses: List<BeatmapListResponse> = listOf(successResponse("Search Result")),
     private val failHot: Boolean = false
 ) : BeatmapRepositoryContract {
     private var hotCallCount = 0
-    private var searchCallCount = 0
+    private var newCallCount = 0
+    var searchCallCount = 0
+        private set
 
     override suspend fun search(keyword: String, limit: Int, offset: Int): BeatmapListResponse =
         searchResponses.getOrElse(searchCallCount++) { searchResponses.last() }
 
     override suspend fun getNew(limit: Int, offset: Int): BeatmapListResponse =
-        successResponse("New Beatmap")
+        newResponses.getOrElse(newCallCount++) { newResponses.last() }
 
     override suspend fun getHot(limit: Int, offset: Int): BeatmapListResponse {
         if (failHot) error("Network error")
