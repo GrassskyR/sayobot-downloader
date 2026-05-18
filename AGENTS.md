@@ -14,6 +14,8 @@ Use the Gradle wrapper from the repository root.
 - `.\gradlew.bat :app:lintDebug :app:testDebugUnitTest :app:assembleDebug` matches the current GitHub Actions verification job.
 - `.\gradlew.bat :app:connectedDebugAndroidTest` runs instrumented tests on a connected emulator or device; this is not currently part of CI.
 
+Run Gradle verification tasks sequentially when possible. Running multiple Gradle invocations in parallel can contend on Kotlin/Gradle cache directories and produce misleading cache errors.
+
 ## Coding Style & Naming Conventions
 
 Write Kotlin using the existing project style: four-space indentation in Gradle Android blocks, concise Compose functions, and package paths matching feature ownership. Use `PascalCase` for composables, classes, and test classes; use `camelCase` for functions and properties. Keep ViewModel logic in `*ViewModel.kt`, UI in `*Screen.kt`, data access in repository classes, and network calls in `network/`. Prefer version-catalog entries in `gradle/libs.versions.toml` for new dependencies.
@@ -22,6 +24,14 @@ Write Kotlin using the existing project style: four-space indentation in Gradle 
 
 The project uses JUnit4 and `kotlinx-coroutines-test` for local tests, plus AndroidX/Compose test libraries for instrumented tests. Name tests after the unit under test, for example `SearchViewModelTest` or `SearchScreenTest`. Add local tests for ViewModel, repository, and state-handling changes. Add instrumented tests only when behavior requires Android framework or Compose runtime validation, and run them locally before merging.
 
+For network request changes, add local tests around request construction when possible. The Sayobot API is sensitive to JSON value types, so `limit` and `offset` must be encoded as numbers, not strings.
+
+## Sayobot API Notes
+
+The beatmap list endpoint uses offset-based pagination. For `type = "new"` and `type = "hot"`, request pages with `offset = pageIndex * limit`, for example `0`, `25`, `50` when `limit = 25`. Do not rely on `endid` as a cursor. The API can loop back to the first page when offset exceeds available data, so list pagination should de-duplicate by stable identifiers such as `sid` and stop loading when a fetched page contains no new items.
+
+Search input is intentionally explicit-submit only. Do not trigger backend search on every text change; use the keyboard Search action or the search icon.
+
 ## Commit & Pull Request Guidelines
 
 Recent history uses short imperative commit subjects such as `Add Android CI workflow` and `Remove emulator CI check`. Keep commits focused and avoid committing local files such as `.claude/`, `local.properties`, build outputs, or temporary XML dumps. Pull requests should describe the user-visible change, list the verification command run, link related issues when available, and include screenshots or recordings for UI changes.
@@ -29,3 +39,5 @@ Recent history uses short imperative commit subjects such as `Add Android CI wor
 ## Security & Configuration Tips
 
 Do not commit secrets, signing keys, or machine-specific SDK paths. `local.properties` should remain local. The CI builds and uploads a debug APK artifact only; release signing or distribution requires a separate, reviewed workflow with protected secrets.
+
+The app declares `POST_NOTIFICATIONS` and uses notifications for download progress. Keep notification permission handling centralized in `MainActivity`, and keep download notification publishing tolerant of denied or revoked notification permission.
