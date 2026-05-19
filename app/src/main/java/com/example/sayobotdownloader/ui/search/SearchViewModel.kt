@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.sayobotdownloader.data.BeatmapRepository
 import com.example.sayobotdownloader.data.BeatmapRepositoryContract
 import com.example.sayobotdownloader.model.BeatmapListItem
+import com.example.sayobotdownloader.model.SearchFilterState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +43,12 @@ class SearchViewModel(
 
     private val _searchInteractionState = MutableStateFlow(SearchInteractionState.BROWSING)
     val searchInteractionState: StateFlow<SearchInteractionState> = _searchInteractionState.asStateFlow()
+
+    private val _filterState = MutableStateFlow(SearchFilterState())
+    val filterState: StateFlow<SearchFilterState> = _filterState.asStateFlow()
+
+    private val _stagedFilterState = MutableStateFlow(SearchFilterState())
+    val stagedFilterState: StateFlow<SearchFilterState> = _stagedFilterState.asStateFlow()
 
     private var nextOffset = 0
     private var lastBrowsingMode = SearchMode.HOT
@@ -83,8 +90,7 @@ class SearchViewModel(
                 if (response.status == 0 && response.data != null) {
                     val addedCount = appendNewItems(response.data)
                     nextOffset += response.data.size
-                    _uiState.value = SearchUiState.Success(
-                        items = allItems.toList(),
+                    emitSuccess(
                         canLoadMore = response.data.size >= PAGE_SIZE && addedCount > 0
                     )
                     _searchInteractionState.value = SearchInteractionState.RESULTS
@@ -115,8 +121,7 @@ class SearchViewModel(
                 if (response.status == 0 && response.data != null) {
                     val addedCount = appendNewItems(response.data)
                     nextOffset += response.data.size
-                    _uiState.value = SearchUiState.Success(
-                        items = allItems.toList(),
+                    emitSuccess(
                         canLoadMore = response.data.size >= PAGE_SIZE && addedCount > 0
                     )
                 } else {
@@ -144,8 +149,7 @@ class SearchViewModel(
                 if (response.status == 0 && response.data != null) {
                     val addedCount = appendNewItems(response.data)
                     nextOffset += response.data.size
-                    _uiState.value = SearchUiState.Success(
-                        items = allItems.toList(),
+                    emitSuccess(
                         canLoadMore = response.data.size >= PAGE_SIZE && addedCount > 0
                     )
                 } else {
@@ -178,23 +182,16 @@ class SearchViewModel(
                 if (response.status == 0 && response.data != null) {
                     val addedCount = appendNewItems(response.data)
                     nextOffset += response.data.size
-                    _uiState.value = SearchUiState.Success(
-                        items = allItems.toList(),
+                    emitSuccess(
                         canLoadMore = response.data.size >= PAGE_SIZE && addedCount > 0
                     )
                 } else {
-                    _uiState.value = SearchUiState.Success(
-                        items = allItems.toList(),
-                        canLoadMore = false
-                    )
+                    emitSuccess(canLoadMore = false)
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _uiState.value = SearchUiState.Success(
-                    items = allItems.toList(),
-                    canLoadMore = false
-                )
+                emitSuccess(canLoadMore = false)
             }
         }
     }
@@ -204,6 +201,74 @@ class SearchViewModel(
         when (lastBrowsingMode) {
             SearchMode.NEW -> loadNew()
             SearchMode.HOT, SearchMode.SEARCH -> loadHot()
+        }
+    }
+
+    fun openFilterSheet() {
+        _stagedFilterState.value = _filterState.value
+    }
+
+    fun updateStagedMode(mode: String) {
+        _stagedFilterState.value = _stagedFilterState.value.copy(selectedMode = mode)
+    }
+
+    fun updateStagedStatus(status: String) {
+        _stagedFilterState.value = _stagedFilterState.value.copy(selectedStatus = status)
+    }
+
+    fun applyFilters() {
+        _filterState.value = _stagedFilterState.value
+        emitFilteredItems()
+    }
+
+    fun resetStagedFilters() {
+        _stagedFilterState.value = SearchFilterState()
+    }
+
+    fun dismissFilters() {
+        // Staged changes discarded; current filter unchanged
+    }
+
+    private fun emitFilteredItems() {
+        val state = _uiState.value
+        if (state is SearchUiState.Success) {
+            emitSuccess(canLoadMore = state.canLoadMore, isLoadingMore = state.isLoadingMore)
+        }
+    }
+
+    private fun emitSuccess(
+        canLoadMore: Boolean = true,
+        isLoadingMore: Boolean = false
+    ) {
+        val filtered = filterItems(allItems.toList(), _filterState.value)
+        _uiState.value = SearchUiState.Success(
+            items = filtered,
+            isLoadingMore = isLoadingMore,
+            canLoadMore = canLoadMore
+        )
+    }
+
+    private fun filterItems(
+        items: List<BeatmapListItem>,
+        filter: SearchFilterState
+    ): List<BeatmapListItem> {
+        return items.filter { item ->
+            when (filter.selectedMode) {
+                SearchFilterState.MODE_ALL -> true
+                SearchFilterState.MODE_STD -> item.modes and 1 != 0
+                SearchFilterState.MODE_TAIKO -> item.modes and 2 != 0
+                SearchFilterState.MODE_CTB -> item.modes and 4 != 0
+                SearchFilterState.MODE_MANIA -> item.modes and 8 != 0
+                else -> true
+            } && when (filter.selectedStatus) {
+                SearchFilterState.STATUS_ALL -> true
+                SearchFilterState.STATUS_RANKED_APPROVED -> item.approved == 1 || item.approved == 2
+                SearchFilterState.STATUS_QUALIFIED -> item.approved == 3
+                SearchFilterState.STATUS_LOVED -> item.approved == 4
+                SearchFilterState.STATUS_PENDING_WIP -> item.approved == 0 || item.approved == -1
+                SearchFilterState.STATUS_GRAVEYARD -> item.approved == -2
+                else -> true
+            }
         }
     }
 

@@ -8,6 +8,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,6 +28,10 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,18 +41,22 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,9 +74,10 @@ import androidx.navigation3.runtime.NavKey
 import coil3.compose.AsyncImage
 import com.example.sayobotdownloader.DetailRoute
 import com.example.sayobotdownloader.model.BeatmapListItem
+import com.example.sayobotdownloader.model.SearchFilterState
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(
     onItemClick: (NavKey) -> Unit,
@@ -77,10 +88,14 @@ fun SearchScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchMode by viewModel.searchMode.collectAsState()
     val searchInteractionState by viewModel.searchInteractionState.collectAsState()
+    val filterState by viewModel.filterState.collectAsState()
+    val stagedFilterState by viewModel.stagedFilterState.collectAsState()
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    var showFilterSheet by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState()
     val isSearchActive = searchInteractionState != SearchInteractionState.BROWSING
     val showBrowsingTabs = searchInteractionState == SearchInteractionState.BROWSING ||
         searchInteractionState == SearchInteractionState.INPUT
@@ -154,9 +169,27 @@ fun SearchScreen(
                     }
                 },
                 trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = ::exitSearch) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear search")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = ::exitSearch) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear search")
+                            }
+                        }
+                        BadgedBox(
+                            badge = {
+                                if (filterState.isFilterActive) {
+                                    Badge()
+                                }
+                            }
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    viewModel.openFilterSheet()
+                                    showFilterSheet = true
+                                }
+                            ) {
+                                Icon(Icons.Default.Tune, contentDescription = "Filter")
+                            }
                         }
                     }
                 },
@@ -303,6 +336,24 @@ fun SearchScreen(
             }
         }
     }
+
+    if (showFilterSheet) {
+        FilterBottomSheet(
+            stagedFilterState = stagedFilterState,
+            onModeSelected = viewModel::updateStagedMode,
+            onStatusSelected = viewModel::updateStagedStatus,
+            onReset = viewModel::resetStagedFilters,
+            onApply = {
+                viewModel.applyFilters()
+                showFilterSheet = false
+            },
+            onDismiss = {
+                viewModel.dismissFilters()
+                showFilterSheet = false
+            },
+            sheetState = sheetState
+        )
+    }
 }
 
 @Composable
@@ -390,6 +441,83 @@ private fun BeatmapCard(
                             style = MaterialTheme.typography.labelSmall
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun FilterBottomSheet(
+    stagedFilterState: SearchFilterState,
+    onModeSelected: (String) -> Unit,
+    onStatusSelected: (String) -> Unit,
+    onReset: () -> Unit,
+    onApply: () -> Unit,
+    onDismiss: () -> Unit,
+    sheetState: androidx.compose.material3.SheetState
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Text(
+                text = "高级选项",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(bottom = 20.dp)
+            )
+
+            Text(
+                text = "模式",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SearchFilterState.MODE_OPTIONS.forEach { mode ->
+                    FilterChip(
+                        selected = stagedFilterState.selectedMode == mode,
+                        onClick = { onModeSelected(mode) },
+                        label = { Text(mode) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text(
+                text = "状态",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SearchFilterState.STATUS_OPTIONS.forEach { status ->
+                    FilterChip(
+                        selected = stagedFilterState.selectedStatus == status,
+                        onClick = { onStatusSelected(status) },
+                        label = { Text(status) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onReset) {
+                    Text("重置")
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(onClick = onApply) {
+                    Text("确认")
                 }
             }
         }
