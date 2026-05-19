@@ -86,7 +86,13 @@ class SearchViewModel(
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             try {
-                val response = repository.search(query, limit = PAGE_SIZE, offset = 0)
+                val response = repository.search(
+                    query,
+                    limit = PAGE_SIZE,
+                    offset = 0,
+                    mode = _filterState.value.modeBitmask,
+                    classFilter = _filterState.value.statusBitmask
+                )
                 if (response.status == 0 && response.data != null) {
                     val addedCount = appendNewItems(response.data)
                     nextOffset += response.data.size
@@ -174,7 +180,13 @@ class SearchViewModel(
                 val response = when (_searchMode.value) {
                     SearchMode.SEARCH -> {
                         if (query.isEmpty()) return@launch
-                        repository.search(query, limit = PAGE_SIZE, offset = nextOffset)
+                        repository.search(
+                            query,
+                            limit = PAGE_SIZE,
+                            offset = nextOffset,
+                            mode = _filterState.value.modeBitmask,
+                            classFilter = _filterState.value.statusBitmask
+                        )
                     }
                     SearchMode.HOT -> repository.getHot(limit = PAGE_SIZE, offset = nextOffset)
                     SearchMode.NEW -> repository.getNew(limit = PAGE_SIZE, offset = nextOffset)
@@ -208,17 +220,21 @@ class SearchViewModel(
         _stagedFilterState.value = _filterState.value
     }
 
-    fun updateStagedMode(mode: String) {
-        _stagedFilterState.value = _stagedFilterState.value.copy(selectedMode = mode)
+    fun updateStagedModes(modes: Set<String>) {
+        _stagedFilterState.value = _stagedFilterState.value.copy(selectedModes = modes)
     }
 
-    fun updateStagedStatus(status: String) {
-        _stagedFilterState.value = _stagedFilterState.value.copy(selectedStatus = status)
+    fun updateStagedStatuses(statuses: Set<String>) {
+        _stagedFilterState.value = _stagedFilterState.value.copy(selectedStatuses = statuses)
     }
 
     fun applyFilters() {
         _filterState.value = _stagedFilterState.value
-        emitFilteredItems()
+        if (_searchMode.value == SearchMode.SEARCH && _searchQuery.value.isNotBlank()) {
+            onSearch()
+        } else {
+            emitFilteredItems()
+        }
     }
 
     fun resetStagedFilters() {
@@ -253,22 +269,24 @@ class SearchViewModel(
         filter: SearchFilterState
     ): List<BeatmapListItem> {
         return items.filter { item ->
-            when (filter.selectedMode) {
-                SearchFilterState.MODE_ALL -> true
-                SearchFilterState.MODE_STD -> item.modes and 1 != 0
-                SearchFilterState.MODE_TAIKO -> item.modes and 2 != 0
-                SearchFilterState.MODE_CTB -> item.modes and 4 != 0
-                SearchFilterState.MODE_MANIA -> item.modes and 8 != 0
-                else -> true
-            } && when (filter.selectedStatus) {
-                SearchFilterState.STATUS_ALL -> true
-                SearchFilterState.STATUS_RANKED_APPROVED -> item.approved == 1 || item.approved == 2
-                SearchFilterState.STATUS_QUALIFIED -> item.approved == 3
-                SearchFilterState.STATUS_LOVED -> item.approved == 4
-                SearchFilterState.STATUS_PENDING_WIP -> item.approved == 0 || item.approved == -1
-                SearchFilterState.STATUS_GRAVEYARD -> item.approved == -2
-                else -> true
-            }
+            (filter.selectedModes.isEmpty() || filter.selectedModes.any { mode ->
+                when (mode) {
+                    SearchFilterState.MODE_STD -> item.modes and 1 != 0
+                    SearchFilterState.MODE_TAIKO -> item.modes and 2 != 0
+                    SearchFilterState.MODE_CTB -> item.modes and 4 != 0
+                    SearchFilterState.MODE_MANIA -> item.modes and 8 != 0
+                    else -> true
+                }
+            }) && (filter.selectedStatuses.isEmpty() || filter.selectedStatuses.any { status ->
+                when (status) {
+                    SearchFilterState.STATUS_RANKED_APPROVED -> item.approved == 1 || item.approved == 2
+                    SearchFilterState.STATUS_QUALIFIED -> item.approved == 3
+                    SearchFilterState.STATUS_LOVED -> item.approved == 4
+                    SearchFilterState.STATUS_PENDING_WIP -> item.approved == 0 || item.approved == -1
+                    SearchFilterState.STATUS_GRAVEYARD -> item.approved == -2
+                    else -> true
+                }
+            })
         }
     }
 

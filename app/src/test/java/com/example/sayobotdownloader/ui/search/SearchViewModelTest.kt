@@ -173,7 +173,13 @@ private class FakeBeatmapRepository(
         private set
     val hotOffsets = mutableListOf<Int>()
 
-    override suspend fun search(keyword: String, limit: Int, offset: Int): BeatmapListResponse =
+    override suspend fun search(
+        keyword: String,
+        limit: Int,
+        offset: Int,
+        mode: Int?,
+        classFilter: Int?
+    ): BeatmapListResponse =
         searchResponses.getOrElse(searchCallCount++) { searchResponses.last() }
 
     override suspend fun getNew(limit: Int, offset: Int): BeatmapListResponse =

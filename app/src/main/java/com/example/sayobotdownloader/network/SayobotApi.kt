@@ -15,13 +15,21 @@ class SayobotApi(
     private val client: OkHttpClient = OkHttpClient.Builder().build(),
     private val json: Json = Json { ignoreUnknownKeys = true }
 ) {
-    suspend fun searchBeatmaps(keyword: String, limit: Int = 25, offset: Int = 0): BeatmapListResponse =
+    suspend fun searchBeatmaps(
+        keyword: String,
+        limit: Int = 25,
+        offset: Int = 0,
+        mode: Int? = null,
+        classFilter: Int? = null
+    ): BeatmapListResponse =
         withContext(Dispatchers.IO) {
             val body = beatmapListBody(
                 type = "search",
                 limit = limit,
                 offset = offset,
-                keyword = keyword
+                keyword = keyword,
+                mode = mode,
+                classFilter = classFilter
             )
             val request = Request.Builder()
                 .url("https://api.sayobot.cn/?post")
@@ -62,7 +70,9 @@ class SayobotApi(
         type: String,
         limit: Int,
         offset: Int,
-        keyword: String? = null
+        keyword: String? = null,
+        mode: Int? = null,
+        classFilter: Int? = null
     ): String = buildJsonObject {
         put("cmd", "beatmaplist")
         put("limit", limit)
@@ -70,6 +80,12 @@ class SayobotApi(
         put("type", type)
         if (keyword != null) {
             put("keyword", keyword)
+        }
+        if (mode != null) {
+            put("mode", mode)
+        }
+        if (classFilter != null) {
+            put("class", classFilter)
         }
     }.toString()
 

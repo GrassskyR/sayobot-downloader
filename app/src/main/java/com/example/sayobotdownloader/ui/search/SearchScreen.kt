@@ -340,8 +340,8 @@ fun SearchScreen(
     if (showFilterSheet) {
         FilterBottomSheet(
             stagedFilterState = stagedFilterState,
-            onModeSelected = viewModel::updateStagedMode,
-            onStatusSelected = viewModel::updateStagedStatus,
+            onModeToggled = viewModel::updateStagedModes,
+            onStatusToggled = viewModel::updateStagedStatuses,
             onReset = viewModel::resetStagedFilters,
             onApply = {
                 viewModel.applyFilters()
@@ -451,8 +451,8 @@ private fun BeatmapCard(
 @Composable
 private fun FilterBottomSheet(
     stagedFilterState: SearchFilterState,
-    onModeSelected: (String) -> Unit,
-    onStatusSelected: (String) -> Unit,
+    onModeToggled: (Set<String>) -> Unit,
+    onStatusToggled: (Set<String>) -> Unit,
     onReset: () -> Unit,
     onApply: () -> Unit,
     onDismiss: () -> Unit,
@@ -482,8 +482,13 @@ private fun FilterBottomSheet(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SearchFilterState.MODE_OPTIONS.forEach { mode ->
                     FilterChip(
-                        selected = stagedFilterState.selectedMode == mode,
-                        onClick = { onModeSelected(mode) },
+                        selected = mode in stagedFilterState.selectedModes,
+                        onClick = {
+                            val current = stagedFilterState.selectedModes
+                            onModeToggled(
+                                if (mode in current) current - mode else current + mode
+                            )
+                        },
                         label = { Text(mode) }
                     )
                 }
@@ -499,8 +504,13 @@ private fun FilterBottomSheet(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SearchFilterState.STATUS_OPTIONS.forEach { status ->
                     FilterChip(
-                        selected = stagedFilterState.selectedStatus == status,
-                        onClick = { onStatusSelected(status) },
+                        selected = status in stagedFilterState.selectedStatuses,
+                        onClick = {
+                            val current = stagedFilterState.selectedStatuses
+                            onStatusToggled(
+                                if (status in current) current - status else current + status
+                            )
+                        },
                         label = { Text(status) }
                     )
                 }

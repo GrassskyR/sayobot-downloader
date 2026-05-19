@@ -32,6 +32,23 @@ The beatmap list endpoint uses offset-based pagination. For `type = "new"` and `
 
 Search input is intentionally explicit-submit only. Do not trigger backend search on every text change; use the keyboard Search action or the search icon.
 
+### Advanced Search Filters
+
+The `type = "search"` endpoint supports server-side filtering via bitmask parameters:
+
+| Parameter | JSON key | Format | Notes |
+|-----------|----------|--------|-------|
+| Game mode | `mode` | bitmask int | 1=std, 2=taiko, 4=ctb, 8=mania. Sum of selected modes. Omit for "all". |
+| Status | `class` | bitmask int | 1=Ranked, 2=Qualified, 4=Loved, 8=Pending, 16=Graveyard. Sum of selected statuses. Omit for "all". |
+
+These parameters only work with `type = "search"`. For `"new"` and `"hot"` types, filtering falls back to client-side `filterItems()` in the ViewModel.
+
+The `SearchFilterState` model (`model/SearchFilterState.kt`) uses `Set<String>` for multi-select and exposes `modeBitmask: Int?` / `statusBitmask: Int?` computed properties. When `applyFilters()` is called:
+- **SEARCH mode** with active query: triggers `onSearch()` with bitmask to request server-filtered data.
+- **Hot/New mode**: applies `filterItems()` client-side on existing data.
+
+Staged filter state (in the Modal Bottom Sheet) is separate from the applied state. Dismiss discards staged changes; only "确认" applies them.
+
 ## Commit & Pull Request Guidelines
 
 Recent history uses short imperative commit subjects such as `Add Android CI workflow` and `Remove emulator CI check`. Keep commits focused and avoid committing local files such as `.claude/`, `local.properties`, build outputs, or temporary XML dumps. Pull requests should describe the user-visible change, list the verification command run, link related issues when available, and include screenshots or recordings for UI changes.

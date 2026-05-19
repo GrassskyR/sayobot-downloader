@@ -4,7 +4,13 @@ import com.example.sayobotdownloader.model.*
 import com.example.sayobotdownloader.network.SayobotApi
 
 interface BeatmapRepositoryContract {
-    suspend fun search(keyword: String, limit: Int = 25, offset: Int = 0): BeatmapListResponse
+    suspend fun search(
+        keyword: String,
+        limit: Int = 25,
+        offset: Int = 0,
+        mode: Int? = null,
+        classFilter: Int? = null
+    ): BeatmapListResponse
     suspend fun getNew(limit: Int = 25, offset: Int = 0): BeatmapListResponse
     suspend fun getHot(limit: Int = 25, offset: Int = 0): BeatmapListResponse
     suspend fun getDetail(sid: Int): BeatmapDetailResponse
@@ -12,7 +18,13 @@ interface BeatmapRepositoryContract {
 
 class BeatmapRepository(private val api: SayobotApi = SayobotApi()) : BeatmapRepositoryContract {
 
-    override suspend fun search(keyword: String, limit: Int, offset: Int): BeatmapListResponse {
+    override suspend fun search(
+        keyword: String,
+        limit: Int,
+        offset: Int,
+        mode: Int?,
+        classFilter: Int?
+    ): BeatmapListResponse {
         val sid = keyword.trim().toIntOrNull()
         if (sid != null) {
             val detail = api.getBeatmapDetail(sid)
@@ -22,7 +34,7 @@ class BeatmapRepository(private val api: SayobotApi = SayobotApi()) : BeatmapRep
                 data = detail.data?.let { listOf(detailToListItem(it)) }
             )
         }
-        return api.searchBeatmaps(keyword, limit, offset)
+        return api.searchBeatmaps(keyword, limit, offset, mode, classFilter)
     }
 
     override suspend fun getNew(limit: Int, offset: Int) = api.getNewBeatmaps(limit, offset)
