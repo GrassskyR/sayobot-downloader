@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.sayobotdownloader.data.BeatmapRepository
 import com.example.sayobotdownloader.data.BeatmapRepositoryContract
 import com.example.sayobotdownloader.model.BeatmapListItem
+import com.example.sayobotdownloader.model.BeatmapListResponse
 import com.example.sayobotdownloader.model.SearchFilterState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -127,9 +128,10 @@ class SearchViewModel(
                 if (response.status == 0 && response.data != null) {
                     val addedCount = appendNewItems(response.data)
                     nextOffset += response.data.size
-                    emitSuccess(
-                        canLoadMore = response.data.size >= PAGE_SIZE && addedCount > 0
-                    )
+                    val canLoad = prefetchWhileEmpty(
+                        afterPage = response.data.size >= PAGE_SIZE && addedCount > 0
+                    ) { repository.getHot(limit = PAGE_SIZE, offset = it) }
+                    emitSuccess(canLoadMore = canLoad)
                 } else {
                     _uiState.value = SearchUiState.Error("Failed to load")
                 }
@@ -155,9 +157,10 @@ class SearchViewModel(
                 if (response.status == 0 && response.data != null) {
                     val addedCount = appendNewItems(response.data)
                     nextOffset += response.data.size
-                    emitSuccess(
-                        canLoadMore = response.data.size >= PAGE_SIZE && addedCount > 0
-                    )
+                    val canLoad = prefetchWhileEmpty(
+                        afterPage = response.data.size >= PAGE_SIZE && addedCount > 0
+                    ) { repository.getNew(limit = PAGE_SIZE, offset = it) }
+                    emitSuccess(canLoadMore = canLoad)
                 } else {
                     _uiState.value = SearchUiState.Error("Failed to load")
                 }
@@ -233,7 +236,31 @@ class SearchViewModel(
         if (_searchMode.value == SearchMode.SEARCH && _searchQuery.value.isNotBlank()) {
             onSearch()
         } else {
-            emitFilteredItems()
+            val state = _uiState.value
+            if (state is SearchUiState.Success
+                && _filterState.value.isFilterActive
+                && state.canLoadMore
+                && filterItems(allItems, _filterState.value).isEmpty()
+            ) {
+                loadJob?.cancel()
+                loadJob = viewModelScope.launch {
+                    try {
+                        val fetch: suspend (Int) -> BeatmapListResponse = when (_searchMode.value) {
+                            SearchMode.HOT -> { offset -> repository.getHot(PAGE_SIZE, offset) }
+                            SearchMode.NEW -> { offset -> repository.getNew(PAGE_SIZE, offset) }
+                            else -> return@launch
+                        }
+                        val stillMore = prefetchWhileEmpty(state.canLoadMore, fetch)
+                        emitSuccess(canLoadMore = stillMore)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        emitSuccess(canLoadMore = false)
+                    }
+                }
+            } else {
+                emitFilteredItems()
+            }
         }
     }
 
@@ -243,6 +270,27 @@ class SearchViewModel(
 
     fun dismissFilters() {
         // Staged changes discarded; current filter unchanged
+    }
+
+    private suspend fun prefetchWhileEmpty(
+        afterPage: Boolean,
+        fetch: suspend (Int) -> BeatmapListResponse
+    ): Boolean {
+        if (!_filterState.value.isFilterActive) return afterPage
+        var canLoadMore = afterPage
+        var remaining = MAX_PREFETCH_PAGES
+        while (remaining > 0 && canLoadMore && filterItems(allItems, _filterState.value).isEmpty()) {
+            remaining--
+            val response = fetch(nextOffset)
+            if (response.status != 0 || response.data == null) {
+                canLoadMore = false
+                break
+            }
+            val added = appendNewItems(response.data)
+            nextOffset += response.data.size
+            canLoadMore = response.data.size >= PAGE_SIZE && added > 0
+        }
+        return canLoadMore
     }
 
     private fun emitFilteredItems() {
@@ -309,5 +357,6 @@ class SearchViewModel(
 
     private companion object {
         const val PAGE_SIZE = 25
+        const val MAX_PREFETCH_PAGES = 5
     }
 }
