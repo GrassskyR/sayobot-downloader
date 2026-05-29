@@ -349,7 +349,21 @@ private fun DifficultyCard(diff: BeatmapDifficulty) {
             // AR / CS / OD / HP
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 StatChip("AR", diff.ar)
-                StatChip("CS", diff.cs)
+                if (diff.mode == 3) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Text(
+                            text = "Keys: ${diff.cs.toInt()}Key",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                } else {
+                    StatChip("CS", diff.cs)
+                }
                 StatChip("OD", diff.od)
                 StatChip("HP", diff.hp)
             }
